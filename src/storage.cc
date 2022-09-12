@@ -507,8 +507,10 @@ rocksdb::Status Storage::Write(const rocksdb::WriteOptions &options, rocksdb::Wr
   if (replid_.length() == kReplIdLength) {
     updates->PutLogData(ServerLogData(kReplIdLog, replid_).Encode());
   }
-
-  return db_->Write(options, updates);
+  
+  rocksdb::WriteOptions opts = rocksdb::WriteOptions();
+  opts.disableWAL = true;
+  return db_->Write(opts, updates);
 }
 
 rocksdb::Status Storage::Delete(const rocksdb::WriteOptions &options,
