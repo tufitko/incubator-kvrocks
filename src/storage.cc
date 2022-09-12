@@ -61,6 +61,7 @@ const char *kLuaFunctionPrefix = "lua_f_";
 const char *kReplicationIdKey = "replication_id_";
 
 const uint64_t kIORateLimitMaxMb = 1024000;
+rocksdb::WriteOptions write_opts = rocksdb::WriteOptions();
 
 using rocksdb::Slice;
 
@@ -68,6 +69,7 @@ Storage::Storage(Config *config)
     : env_(rocksdb::Env::Default()),
       config_(config),
       lock_mgr_(16) {
+  Engine::write_opts.disableWAL = true;
   Metadata::InitVersionCounter();
   SetCheckpointCreateTime(0);
   SetCheckpointAccessTime(0);
@@ -507,10 +509,7 @@ rocksdb::Status Storage::Write(const rocksdb::WriteOptions &options, rocksdb::Wr
   if (replid_.length() == kReplIdLength) {
     updates->PutLogData(ServerLogData(kReplIdLog, replid_).Encode());
   }
-  
-  rocksdb::WriteOptions opts = rocksdb::WriteOptions();
-  opts.disableWAL = true;
-  return db_->Write(opts, updates);
+  return db_->Write(Engine::write_opts, updates);
 }
 
 rocksdb::Status Storage::Delete(const rocksdb::WriteOptions &options,

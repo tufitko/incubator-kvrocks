@@ -57,6 +57,7 @@ extern const char *kPropagateColumnFamilyName;
 extern const char *kPropagateScriptCommand;
 
 extern const char *kLuaFunctionPrefix;
+extern rocksdb::WriteOptions write_opts;
 
 class Storage {
  public:
