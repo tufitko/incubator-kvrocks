@@ -266,7 +266,7 @@ Status Storage::Open(bool read_only) {
   metadata_opts.memtable_prefix_bloom_size_ratio = 0.1;
   metadata_opts.table_properties_collector_factories.emplace_back(
       NewCompactOnExpiredTableCollectorFactory(kMetadataColumnFamilyName, 0.3));
-  SetBlobDB(&metadata_opts);
+  //SetBlobDB(&metadata_opts);
 
   rocksdb::BlockBasedTableOptions subkey_table_opts = InitTableOptions();
   subkey_table_opts.block_cache = shared_block_cache ?
