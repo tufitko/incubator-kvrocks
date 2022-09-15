@@ -117,4 +117,65 @@ bool SubKeyFilter::Filter(int level,
              << ", result: " << (result ? "deleted" : "reserved");
   return result;
 }
+
+rocksdb::CompactionFilter::Decision SubKeyFilter::IsKeyExpired(const InternalKey &ikey) const {
+  std::string metadata_key;
+
+  auto db = stor_->GetDB();
+  const auto cf_handles = stor_->GetCFHandles();
+  // storage close the would delete the column family handler and DB
+  if (!db || cf_handles->size() < 2)  return rocksdb::CompactionFilter::Decision::kKeep;
+
+  ComposeNamespaceKey(ikey.GetNamespace(), ikey.GetKey(), &metadata_key, stor_->IsSlotIdEncoded());
+
+  if (cached_key_.empty() || metadata_key != cached_key_) {
+    std::string bytes;
+    rocksdb::Status s = db->Get(rocksdb::ReadOptions(), (*cf_handles)[1], metadata_key, &bytes);
+    cached_key_ = std::move(metadata_key);
+    if (s.ok()) {
+      cached_metadata_ = std::move(bytes);
+    } else if (s.IsNotFound()) {
+      // metadata was deleted(perhaps compaction or manual)
+      // clear the metadata
+      cached_metadata_.clear();
+      return rocksdb::CompactionFilter::Decision::kRemove;
+    } else {
+      LOG(ERROR) << "[compact_filter/subkey] Failed to fetch metadata"
+                 << ", namespace: " << ikey.GetNamespace().ToString()
+                 << ", key: " << ikey.GetKey().ToString()
+                 << ", err: " << s.ToString();
+      cached_key_.clear();
+      cached_metadata_.clear();
+      return rocksdb::CompactionFilter::Decision::kKeep;
+    }
+  }
+  // the metadata was not found
+  if (cached_metadata_.empty()) return rocksdb::CompactionFilter::Decision::kRemove;
+  // the metadata is cached
+  Metadata metadata(kRedisNone, false);
+  rocksdb::Status s = metadata.Decode(cached_metadata_);
+  if (!s.ok()) {
+    cached_key_.clear();
+    LOG(ERROR) << "[compact_filter/subkey] Failed to decode metadata"
+               << ", namespace: " << ikey.GetNamespace().ToString()
+               << ", key: " << ikey.GetKey().ToString()
+               << ", err: " << s.ToString();
+    return rocksdb::CompactionFilter::Decision::kKeep;
+  }
+  if (metadata.Type() == kRedisString  // metadata key was overwrite by set command
+      || metadata.Expired()
+      || ikey.GetVersion() != metadata.version) {
+    return rocksdb::CompactionFilter::Decision::kRemove;
+  }
+  // todo: rework redisBitmap?
+  return metadata.Type() == kRedisBitmap ? rocksdb::CompactionFilter::Decision::kUndetermined : rocksdb::CompactionFilter::Decision::kKeep;
+}
+
+
+rocksdb::CompactionFilter::Decision SubKeyFilter::FilterBlobByKey(int level, const Slice& key, std::string* new_value, std::string* skip_until) const {
+  InternalKey ikey(key, stor_->IsSlotIdEncoded());
+  return IsKeyExpired(ikey);
+}
+
+
 }  // namespace Engine
